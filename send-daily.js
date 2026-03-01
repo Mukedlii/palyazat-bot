@@ -41,16 +41,34 @@ async function fetchRSS(url, sourceName) {
             const itemXml = match[1];
             const titleMatch = itemXml.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>([^<]+)<\/title>/);
             const linkMatch = itemXml.match(/<link>([^<]+)<\/link>|<guid isPermaLink="true">([^<]+)<\/guid>/);
+            const dateMatch = itemXml.match(/<pubDate>([^<]+)<\/pubDate>|<dc:date>([^<]+)<\/dc:date>/);
+            
             const title = (titleMatch?.[1] || titleMatch?.[2] || '').trim()
                 .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#8211;/g, '–');
             const link = (linkMatch?.[1] || linkMatch?.[2] || '').trim();
-            if (title && title.length > 5) items.push({ title, link, source: sourceName });
+            const pubDate = (dateMatch?.[1] || dateMatch?.[2] || '').trim();
+            
+            if (title && title.length > 5) {
+                items.push({ title, link, source: sourceName, pubDate });
+            }
         }
         console.log(`  ✅ ${sourceName}: ${items.length} elem`);
         return items;
     } catch (e) {
         console.log(`  ❌ ${sourceName}: ${e.message}`);
         return [];
+    }
+}
+
+// Dátum szűrés – csak 2025 és 2026
+function isRecent(pubDate) {
+    if (!pubDate) return true; // ha nincs dátum, megtartjuk
+    try {
+        const date = new Date(pubDate);
+        const year = date.getFullYear();
+        return year >= 2025;
+    } catch {
+        return true;
     }
 }
 
@@ -121,12 +139,16 @@ async function scrapePalyazatok() {
         items.forEach(item => allItems.push(item));
     }
     
+    // Duplikátumok szűrése
     const unique = allItems.filter((p, i, self) => 
         i === self.findIndex(t => t.title === p.title)
     );
+
+    // ⭐ DÁTUM SZŰRÉS – csak 2025-2026
+    const recent = unique.filter(p => isRecent(p.pubDate));
     
-    console.log(`📋 Összesen: ${unique.length} egyedi pályázat`);
-    return unique;
+    console.log(`📋 Összesen: ${unique.length} egyedi → ${recent.length} db 2025-2026-os`);
+    return recent;
 }
 
 function kategoriaBesorol(title, source) {
@@ -139,8 +161,8 @@ function kategoriaBesorol(title, source) {
     if (s.includes('önkormányzat') || s.includes('intézményi') || s.includes('mnl')) return 'intezm';
     if (s.includes('mezőgazdasági') || s.includes('mezogazdasagi')) return 'mezogazd';
 
-    const vallalkozo = ['vállalkozás', 'vállalkozó', 'kkv', 'startup', 'cég', 'üzlet', 'mikro', 'munkaadó', 'gazdasági', 'innováci', 'informatik', 'it ', 'energetik', 'napelem', 'elektromos', 'töltő', 'e-autó', 'rrf', 'turizm'];
-    const maganszem = ['magánszemély', 'család', 'lakás', 'otthon', 'felújítás', 'gyermek', 'nyugdíjas', 'álláskeresők', 'fiatal', 'szülő', 'ösztöndíj', 'diák', 'tanuló', 'ifjú', 'e-bike', 'mosógép'];
+    const vallalkozo = ['vállalkozás', 'vállalkozó', 'kkv', 'startup', 'cég', 'üzlet', 'mikro', 'munkaadó', 'gazdasági', 'innováci', 'informatik', 'energetik', 'napelem', 'elektromos', 'töltő', 'e-autó', 'rrf', 'turizm'];
+    const maganszem = ['magánszemély', 'család', 'lakás', 'otthon', 'felújítás', 'gyermek', 'nyugdíjas', 'álláskeresők', 'fiatal', 'szülő', 'ösztöndíj', 'diák', 'tanuló', 'ifjú', 'e-bike'];
     const civil = ['civil', 'nonprofit', 'alapítvány', 'egyesület', 'kulturális', 'közösség', 'szervezet', 'egyházi', 'irodalmi', 'művészeti', 'sport', 'kreatív'];
     const mezogazd = ['mezőgazdaság', 'agrárium', 'farmer', 'vidék', 'erdő', 'gazdák', 'termelők', 'agrár', 'falu', 'állattenyésztés'];
     const intezm = ['önkormányzat', 'intézmény', 'iskola', 'kórház', 'óvoda', 'köznevelés', 'közintézmény', 'levéltár'];
@@ -153,12 +175,10 @@ function kategoriaBesorol(title, source) {
     return 'egyeb';
 }
 
-// Üzenetek felosztása max 4000 karakter/üzenet
 function splitMessages(groups, today, totalCount) {
     const messages = [];
     
-    // 1. fejléc üzenet
-    messages.push(`🗓️ *Mai pályázatok – ${today}*\n📊 Összesen *${totalCount} pályázat* találva\n\n_Kategóriánként külön üzenetben küldöm!_ 👇`);
+    messages.push(`🗓️ *Mai pályázatok – ${today}*\n📊 Összesen *${totalCount} db* (2025-2026)\n\n_Kategóriánként külön üzenetben_ 👇`);
     
     const groupDefs = [
         { key: 'maganszem', emoji: '👤', label: 'MAGÁNSZEMÉLYEKNEK' },
@@ -166,14 +186,13 @@ function splitMessages(groups, today, totalCount) {
         { key: 'civil', emoji: '🤝', label: 'CIVIL SZERVEZETEKNEK' },
         { key: 'mezogazd', emoji: '🌾', label: 'MEZŐGAZDASÁGNAK' },
         { key: 'intezm', emoji: '🏫', label: 'INTÉZMÉNYEKNEK' },
-        { key: 'egyeb', emoji: '📋', label: 'EGYÉB PÁLYÁZATOK' },
+        { key: 'egyeb', emoji: '📋', label: 'EGYÉB' },
     ];
 
     for (const def of groupDefs) {
         const items = groups[def.key];
         if (!items || items.length === 0) continue;
 
-        // Felosztjuk 15-ösével
         const chunkSize = 15;
         for (let i = 0; i < items.length; i += chunkSize) {
             const chunk = items.slice(i, i + chunkSize);
@@ -186,8 +205,10 @@ function splitMessages(groups, today, totalCount) {
             
             chunk.forEach((p, idx) => {
                 const num = i + idx + 1;
+                // Dátum megjelenítése ha van
+                const dateStr = p.pubDate ? ` _${new Date(p.pubDate).toLocaleDateString('hu-HU')}_` : '';
                 const link = p.link ? `[${p.title}](${p.link})` : p.title;
-                msg += `${num}. ${link}\n`;
+                msg += `${num}. ${link}${dateStr}\n`;
             });
             
             messages.push(msg);
@@ -221,21 +242,15 @@ async function main() {
     for (const [chatId, user] of Object.entries(users)) {
         if (user.active === false) continue;
         
-        // Szűrés kategória szerint
         let toSend = palyazatok;
         if (user.category && user.category !== 'mind') {
             const filtered = palyazatok.filter(p => kategoriaBesorol(p.title, p.source) === user.category);
             if (filtered.length > 0) toSend = filtered;
         }
 
-        // Csoportosítás
-        const groups = {
-            maganszem: [], vallalkozo: [], civil: [],
-            mezogazd: [], intezm: [], egyeb: []
-        };
+        const groups = { maganszem: [], vallalkozo: [], civil: [], mezogazd: [], intezm: [], egyeb: [] };
         toSend.forEach(p => groups[kategoriaBesorol(p.title, p.source)].push(p));
 
-        // Üzenetek felosztva
         const messages = splitMessages(groups, today, toSend.length);
         
         try {
@@ -254,5 +269,3 @@ async function main() {
 }
 
 main().catch(console.error);
-
-
