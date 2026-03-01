@@ -68,8 +68,9 @@ async function scrapePalyazatok() {
         { url: 'https://www.palyazatok.org/palyazatok-vallalkozasoknak/feed/', name: 'Vállalkozói pályázatok' },
         { url: 'https://www.palyazatok.org/palyazatok-maganszemelyek-szamara/feed/', name: 'Magánszemély pályázatok' },
         { url: 'https://www.palyazatok.org/palyazatok-civil-szervezeteknek/feed/', name: 'Civil pályázatok' },
-        { url: 'https://pafi.hu/feed/', name: 'PAFI' },
-        { url: 'https://magyarfaluprogram.hu/feed', name: 'Magyar Falu Program' },
+        { url: 'https://www.palyazatihirek.eu/feed/', name: 'Pályázati Hírek' },
+        { url: 'https://magyarfaluprogram.hu/feed/', name: 'Magyar Falu Program' },
+        { url: 'https://www.palyazatok.org/palyazatok-onkormanyzatoknak/feed/', name: 'Önkormányzati pályázatok' },
     ];
 
     const allItems = [];
@@ -195,4 +196,5 @@ async function main() {
 }
 
 main().catch(console.error);
+
 
