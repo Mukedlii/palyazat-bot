@@ -1,17 +1,13 @@
-// Ez a fájl fut naponta 14:00-kor a GitHub Actions-on
-import * as cheerio from 'cheerio';
 import * as fs from 'fs';
 
 const TOKEN = process.env.TELEGRAM_TOKEN;
 
-// Felhasználók betöltése
 function loadUsers() {
     try { return JSON.parse(fs.readFileSync('./users.json', 'utf8')); }
     catch { return {}; }
 }
 
-// Telegram üzenet küldése
-async function sendMessage(chatId, text, options = {}) {
+async function sendMessage(chatId, text) {
     const url = `https://api.telegram.org/bot${TOKEN}/sendMessage`;
     const response = await fetch(url, {
         method: 'POST',
@@ -21,77 +17,102 @@ async function sendMessage(chatId, text, options = {}) {
             text,
             parse_mode: 'Markdown',
             disable_web_page_preview: true,
-            ...options
         })
     });
-    return response.json();
+    const result = await response.json();
+    if (!result.ok) console.log('Telegram hiba:', result);
+    return result;
 }
 
-// Pályázatok scrape-elése
+// RSS feed olvasás
+async function fetchRSS(url) {
+    try {
+        const response = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (compatible; RSS Reader)',
+                'Accept': 'application/rss+xml, application/xml, text/xml',
+            }
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const xml = await response.text();
+        
+        // Egyszerű XML parse - title és link kinyerése
+        const items = [];
+        const itemMatches = xml.matchAll(/<item>([\s\S]*?)<\/item>/g);
+        
+        for (const match of itemMatches) {
+            const itemXml = match[1];
+            const titleMatch = itemXml.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/);
+            const linkMatch = itemXml.match(/<link>(.*?)<\/link>|<guid>(https?:\/\/[^<]+)<\/guid>/);
+            const descMatch = itemXml.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>|<description>(.*?)<\/description>/s);
+            
+            const title = (titleMatch?.[1] || titleMatch?.[2] || '').trim();
+            const link = (linkMatch?.[1] || linkMatch?.[2] || '').trim();
+            const desc = (descMatch?.[1] || descMatch?.[2] || '').trim().substring(0, 100);
+            
+            if (title && title.length > 5) {
+                items.push({ title, link, desc });
+            }
+        }
+        
+        return items;
+    } catch (e) {
+        console.log(`RSS hiba ${url}: ${e.message}`);
+        return [];
+    }
+}
+
+// Pályázatok gyűjtése RSS feedekből
 async function scrapePalyazatok() {
-    const palyazatok = [];
-    
     const sources = [
-        { url: 'https://www.palyazatok.org', name: 'Pályázatok.org' },
-        { url: 'https://palyazat.gov.hu', name: 'Palyazat.gov.hu' },
+        { 
+            url: 'https://www.palyazatok.org/feed/', 
+            name: 'Pályázatok.org' 
+        },
+        { 
+            url: 'https://nkfih.gov.hu/palyazoknak/rss', 
+            name: 'NKFIH' 
+        },
+        {
+            url: 'https://www.szechenyi2020.hu/rss',
+            name: 'Széchenyi 2020'
+        }
     ];
 
+    const allItems = [];
+    
     for (const source of sources) {
-        try {
-            const response = await fetch(source.url, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-                    'Accept-Language': 'hu-HU,hu;q=0.9',
-                }
-            });
-            
-            if (!response.ok) continue;
-            
-            const html = await response.text();
-            const $ = cheerio.load(html);
-            
-            $('a[href]').each((_, el) => {
-                const title = $(el).text().trim();
-                const href = $(el).attr('href') || '';
-                
-                if (title.length > 20 && title.length < 200 && 
-                    (title.toLowerCase().includes('pályázat') || 
-                     title.toLowerCase().includes('támogatás') ||
-                     title.toLowerCase().includes('segély') ||
-                     title.toLowerCase().includes('program') ||
-                     title.toLowerCase().includes('ösztöndíj'))) {
-                    
-                    const link = href.startsWith('http') ? href : `${source.url}${href}`;
-                    palyazatok.push({ title, link, source: source.name });
-                }
-            });
-        } catch (e) {
-            console.log(`Hiba ${source.name}: ${e.message}`);
-        }
+        console.log(`Fetching: ${source.url}`);
+        const items = await fetchRSS(source.url);
+        console.log(`  → ${items.length} elem`);
+        items.forEach(item => allItems.push({ ...item, source: source.name }));
     }
     
     // Duplikátumok szűrése
-    return palyazatok.filter((p, i, self) => 
+    const unique = allItems.filter((p, i, self) => 
         i === self.findIndex(t => t.title === p.title)
-    ).slice(0, 10);
+    );
+    
+    console.log(`Összesen: ${unique.length} egyedi pályázat`);
+    return unique.slice(0, 10);
 }
 
 // Kategória szűrés
 function filterByCategory(palyazatok, category) {
     if (!category || category === 'mind') return palyazatok;
     const keywords = {
-        'vallalkozo': ['vállalkozás', 'vállalkozó', 'kkv', 'startup', 'cég'],
-        'maganszem': ['magánszemély', 'család', 'lakás', 'otthon', 'felújítás'],
-        'civil': ['civil', 'nonprofit', 'alapítvány', 'egyesület'],
-        'mezogazd': ['mezőgazdaság', 'agrárium', 'farmer', 'vidék'],
+        'vallalkozo': ['vállalkozás', 'vállalkozó', 'kkv', 'startup', 'cég', 'üzlet'],
+        'maganszem': ['magánszemély', 'család', 'lakás', 'otthon', 'felújítás', 'gyermek'],
+        'civil': ['civil', 'nonprofit', 'alapítvány', 'egyesület', 'kulturális'],
+        'mezogazd': ['mezőgazdaság', 'agrárium', 'farmer', 'vidék', 'erdő'],
     };
     const kws = keywords[category] || [];
-    return palyazatok.filter(p => 
+    const filtered = palyazatok.filter(p => 
         kws.some(kw => p.title.toLowerCase().includes(kw))
     );
+    return filtered.length > 0 ? filtered : palyazatok; // ha nincs találat, mindent küld
 }
 
-// FŐ FUNKCIÓ
 async function main() {
     console.log('📨 Napi értesítők küldése...');
     
@@ -107,22 +128,33 @@ async function main() {
     const palyazatok = await scrapePalyazatok();
     console.log(`📋 ${palyazatok.length} pályázat találva`);
     
+    if (palyazatok.length === 0) {
+        console.log('⚠️ Nem sikerült pályázatokat lekérni!');
+        // Küldünk egy fallback üzenetet
+        for (const [chatId, user] of Object.entries(users)) {
+            if (user.active === false) continue;
+            await sendMessage(parseInt(chatId), 
+                `🇭🇺 *Pályázat Figyelő*\n\nMa technikai hiba miatt nem sikerült a pályázatokat lekérni. Holnap újra próbáljuk!\n\n🔗 Manuálisan: [palyazatok.org](https://www.palyazatok.org)`
+            );
+        }
+        return;
+    }
+    
     let sent = 0;
+    const today = new Date().toLocaleDateString('hu-HU');
     
     for (const [chatId, user] of Object.entries(users)) {
         if (user.active === false) continue;
         
         const filtered = filterByCategory(palyazatok, user.category);
         
-        if (filtered.length === 0) continue;
-        
-        const today = new Date().toLocaleDateString('hu-HU');
         let msg = `🗓️ *Mai pályázatok – ${today}*\n\n`;
         
         filtered.slice(0, 5).forEach((p, i) => {
             msg += `*${i + 1}. ${p.title}*\n`;
             msg += `📌 ${p.source}\n`;
-            msg += `🔗 [Részletek](${p.link})\n\n`;
+            if (p.link) msg += `🔗 [Részletek](${p.link})\n`;
+            msg += `\n`;
         });
         
         msg += `💡 _Napi értesítő – minden nap 14:00-kor_`;
