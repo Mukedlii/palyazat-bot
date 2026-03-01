@@ -20,7 +20,7 @@ async function sendMessage(chatId, text) {
         })
     });
     const result = await response.json();
-    if (!result.ok) console.log('Telegram hiba:', result);
+    if (!result.ok) console.log('Telegram hiba:', JSON.stringify(result));
     return result;
 }
 
@@ -58,11 +58,17 @@ async function scrapePalyazatok() {
     console.log('📡 RSS feedek lekérése...');
     
     const sources = [
+        // === HIVATALOS GOV ===
+        { url: 'https://palyazat.gov.hu/rss.xml', name: 'Palyazat.gov.hu' },
+        { url: 'https://rss.nkfih.gov.hu/hirek?rss=1', name: 'NKFIH Hírek' },
+        { url: 'https://rss.nkfih.gov.hu/hirek-180603?rss=1', name: 'NKFIH Pályázati hírek' },
+        { url: 'https://nkfih.gov.hu/magyar/rss/hazai-innovacios-hirek?rss=1', name: 'NIH Hazai innováció' },
+
         // === PÁLYÁZATFIGYELŐ PORTÁLOK ===
         { url: 'https://palyazatfigyelo.webnode.hu/rss/all.xml', name: 'Pályázat Figyelő' },
-        { url: 'https://palyazatfigyelo.webnode.hu/rss/ujdonsagok.xml', name: 'Pályázat Figyelő – Újdonságok' },
-        { url: 'https://tamogatas.mtva.hu/rss_news.xml', name: 'MTVA Támogatási Program' },
-        { url: 'https://materal.energiagazdasag.hu/feed', name: 'Energiagazdaság pályázatok' },
+        { url: 'https://palyazatfigyelo.webnode.hu/rss/ujdonsagok.xml', name: 'Pályázat Figyelő Újdonságok' },
+        { url: 'https://tamogatas.mtva.hu/rss_news.xml', name: 'MTVA Támogatás' },
+        { url: 'https://materal.energiagazdasag.hu/feed', name: 'Energiagazdaság' },
         { url: 'https://tender.sff.hu/rss.xml', name: 'SFF Tender' },
 
         // === PALYAZATOK.ORG ===
@@ -76,10 +82,10 @@ async function scrapePalyazatok() {
         { url: 'http://palyazatok.org/category/kreativ-palyazatok/feed/', name: 'Kreatív pályázatok' },
         { url: 'http://palyazatok.org/tag/operativ-program/feed', name: 'Operatív programok' },
 
-        // === PÁLYÁZATMENEDZSER – TEMATIKUS ===
+        // === PÁLYÁZATMENEDZSER ===
         { url: 'http://palyazatmenedzser.hu/cimke/informatikai-palyazatok/feed', name: 'IT pályázatok' },
         { url: 'http://palyazatmenedzser.hu/cimke/mezogazdasagi-palyazatok/feed', name: 'Mezőgazdasági pályázatok' },
-        { url: 'http://palyazatmenedzser.hu/cimke/turisztikai-palyazatok/feed', name: 'Turisztikai pályázatok' },
+        { url: 'http://palyazatmenedzser.hu/cimke/turisztikai-palyazatok/feed', name: 'Turisztikai pályázatok PM' },
         { url: 'http://palyazatmenedzser.hu/cimke/energetikai-palyazatok/feed', name: 'Energetikai pályázatok' },
         { url: 'http://palyazatmenedzser.hu/cimke/innovacios-palyazatok/feed', name: 'Innovációs pályázatok' },
         { url: 'http://palyazatmenedzser.hu/cimke/osztondijak/feed', name: 'Ösztöndíjak' },
@@ -89,24 +95,17 @@ async function scrapePalyazatok() {
         { url: 'http://palyazatmenedzser.hu/cimke/sportpalyazatok/feed', name: 'Sport pályázatok' },
 
         // === PAFI ===
-        { url: 'https://pafi.hu/feed/', name: 'PAFI Pályázatfigyelő' },
+        { url: 'https://pafi.hu/feed/', name: 'PAFI' },
         { url: 'https://pafi.hu/palyazatok/vallalkozasok/feed/', name: 'PAFI Vállalkozások' },
         { url: 'https://pafi.hu/palyazatok/maganszemely/feed/', name: 'PAFI Magánszemélyek' },
         { url: 'https://pafi.hu/palyazatok/civil/feed/', name: 'PAFI Civil' },
 
-        // === NKFIH ===
-        { url: 'https://rss.nkfih.gov.hu/hirek?rss=1', name: 'NKFIH Hírek' },
-        { url: 'https://rss.nkfih.gov.hu/hirek-180603?rss=1', name: 'NKFIH Pályázati hírek' },
-        { url: 'https://nkfih.gov.hu/magyar/rss/hazai-innovacios-hirek?rss=1', name: 'NIH Hazai innováció' },
-
         // === MNL ===
         { url: 'https://mnl.gov.hu/mnl/1/rss.xml', name: 'MNL 1' },
         { url: 'https://mnl.gov.hu/mnl/2/rss.xml', name: 'MNL 2' },
-        { url: 'https://mnl.gov.hu/mnl/3/rss.xml', name: 'MNL 3' },
         { url: 'https://mnl.gov.hu/mnl/14/rss.xml', name: 'MNL 14' },
         { url: 'https://mnl.gov.hu/mnl/15/rss.xml', name: 'MNL 15' },
         { url: 'https://mnl.gov.hu/mnl/16/rss.xml', name: 'MNL 16' },
-        { url: 'https://mnl.gov.hu/mnl/17/rss.xml', name: 'MNL 17' },
 
         // === EGYÉB ===
         { url: 'https://magyarfaluprogram.hu/feed/', name: 'Magyar Falu Program' },
@@ -134,18 +133,15 @@ function kategoriaBesorol(title, source) {
     const t = title.toLowerCase();
     const s = (source || '').toLowerCase();
     
-    if (s.includes('magánszemély') || s.includes('maganszemely')) return 'maganszem';
-    if (s.includes('vállalkozói') || s.includes('vallalkozasoknak') || s.includes('kkv')) return 'vallalkozo';
-    if (s.includes('civil')) return 'civil';
-    if (s.includes('önkormányzat') || s.includes('intézményi')) return 'intezm';
+    if (s.includes('magánszemély') || s.includes('maganszemely') || s.includes('ösztöndíj') || s.includes('ifjúsági')) return 'maganszem';
+    if (s.includes('vállalkozói') || s.includes('vallalkozasoknak') || s.includes('kkv') || s.includes('it pályázat') || s.includes('energetikai') || s.includes('innovációs') || s.includes('turisztikai')) return 'vallalkozo';
+    if (s.includes('civil') || s.includes('kulturális') || s.includes('sport') || s.includes('kreatív')) return 'civil';
+    if (s.includes('önkormányzat') || s.includes('intézményi') || s.includes('mnl')) return 'intezm';
     if (s.includes('mezőgazdasági') || s.includes('mezogazdasagi')) return 'mezogazd';
-    if (s.includes('ifjúsági') || s.includes('ösztöndíj')) return 'maganszem';
-    if (s.includes('kulturális') || s.includes('irodalmi') || s.includes('sport') || s.includes('kreatív')) return 'civil';
-    if (s.includes('energetikai') || s.includes('innovációs') || s.includes('it pályázat') || s.includes('turisztikai')) return 'vallalkozo';
 
-    const vallalkozo = ['vállalkozás', 'vállalkozó', 'kkv', 'startup', 'cég', 'üzlet', 'mikro', 'munkaadó', 'gazdasági', 'innováci', 'it ', 'informatik', 'turizm', 'energetik'];
-    const maganszem = ['magánszemély', 'család', 'lakás', 'otthon', 'felújítás', 'gyermek', 'nyugdíjas', 'álláskeresők', 'fiatal', 'szülő', 'ösztöndíj', 'diák', 'tanuló', 'ifjú'];
-    const civil = ['civil', 'nonprofit', 'alapítvány', 'egyesület', 'kulturális', 'közösség', 'szervezet', 'egyházi', 'irodalmi', 'művészeti', 'sport'];
+    const vallalkozo = ['vállalkozás', 'vállalkozó', 'kkv', 'startup', 'cég', 'üzlet', 'mikro', 'munkaadó', 'gazdasági', 'innováci', 'informatik', 'it ', 'energetik', 'napelem', 'elektromos', 'töltő', 'e-autó', 'rrf', 'turizm'];
+    const maganszem = ['magánszemély', 'család', 'lakás', 'otthon', 'felújítás', 'gyermek', 'nyugdíjas', 'álláskeresők', 'fiatal', 'szülő', 'ösztöndíj', 'diák', 'tanuló', 'ifjú', 'e-bike', 'mosógép'];
+    const civil = ['civil', 'nonprofit', 'alapítvány', 'egyesület', 'kulturális', 'közösség', 'szervezet', 'egyházi', 'irodalmi', 'művészeti', 'sport', 'kreatív'];
     const mezogazd = ['mezőgazdaság', 'agrárium', 'farmer', 'vidék', 'erdő', 'gazdák', 'termelők', 'agrár', 'falu', 'állattenyésztés'];
     const intezm = ['önkormányzat', 'intézmény', 'iskola', 'kórház', 'óvoda', 'köznevelés', 'közintézmény', 'levéltár'];
 
@@ -157,36 +153,49 @@ function kategoriaBesorol(title, source) {
     return 'egyeb';
 }
 
-function buildMessage(palyazatok, today) {
-    const groups = {
-        maganszem: { emoji: '👤', label: 'MAGÁNSZEMÉLYEKNEK', items: [] },
-        vallalkozo: { emoji: '🏢', label: 'VÁLLALKOZÓKNAK', items: [] },
-        civil: { emoji: '🤝', label: 'CIVIL SZERVEZETEKNEK', items: [] },
-        mezogazd: { emoji: '🌾', label: 'MEZŐGAZDASÁGNAK', items: [] },
-        intezm: { emoji: '🏫', label: 'INTÉZMÉNYEKNEK', items: [] },
-        egyeb: { emoji: '📋', label: 'EGYÉB', items: [] },
-    };
+// Üzenetek felosztása max 4000 karakter/üzenet
+function splitMessages(groups, today, totalCount) {
+    const messages = [];
+    
+    // 1. fejléc üzenet
+    messages.push(`🗓️ *Mai pályázatok – ${today}*\n📊 Összesen *${totalCount} pályázat* találva\n\n_Kategóriánként külön üzenetben küldöm!_ 👇`);
+    
+    const groupDefs = [
+        { key: 'maganszem', emoji: '👤', label: 'MAGÁNSZEMÉLYEKNEK' },
+        { key: 'vallalkozo', emoji: '🏢', label: 'VÁLLALKOZÓKNAK' },
+        { key: 'civil', emoji: '🤝', label: 'CIVIL SZERVEZETEKNEK' },
+        { key: 'mezogazd', emoji: '🌾', label: 'MEZŐGAZDASÁGNAK' },
+        { key: 'intezm', emoji: '🏫', label: 'INTÉZMÉNYEKNEK' },
+        { key: 'egyeb', emoji: '📋', label: 'EGYÉB PÁLYÁZATOK' },
+    ];
 
-    palyazatok.forEach(p => {
-        groups[kategoriaBesorol(p.title, p.source)].items.push(p);
-    });
+    for (const def of groupDefs) {
+        const items = groups[def.key];
+        if (!items || items.length === 0) continue;
 
-    let msg = `🗓️ *Mai pályázatok – ${today}*\n`;
-    msg += `📊 Összesen ${palyazatok.length} pályázat\n\n`;
-
-    for (const group of Object.values(groups)) {
-        if (group.items.length === 0) continue;
-        msg += `${group.emoji} *${group.label}:*\n`;
-        group.items.slice(0, 4).forEach((p, i) => {
-            const link = p.link ? `[${p.title}](${p.link})` : p.title;
-            msg += `${i + 1}. ${link}\n`;
-        });
-        if (group.items.length > 4) msg += `_...+${group.items.length - 4} további_\n`;
-        msg += `\n`;
+        // Felosztjuk 15-ösével
+        const chunkSize = 15;
+        for (let i = 0; i < items.length; i += chunkSize) {
+            const chunk = items.slice(i, i + chunkSize);
+            const part = Math.floor(i / chunkSize) + 1;
+            const totalParts = Math.ceil(items.length / chunkSize);
+            
+            let msg = `${def.emoji} *${def.label}*`;
+            if (totalParts > 1) msg += ` (${part}/${totalParts})`;
+            msg += ` – ${items.length} db\n\n`;
+            
+            chunk.forEach((p, idx) => {
+                const num = i + idx + 1;
+                const link = p.link ? `[${p.title}](${p.link})` : p.title;
+                msg += `${num}. ${link}\n`;
+            });
+            
+            messages.push(msg);
+        }
     }
-
-    msg += `💡 _Napi értesítő – minden nap 14:00-kor_`;
-    return msg;
+    
+    messages.push(`💡 _Napi értesítő – minden nap 14:00-kor_\n/stop – leiratkozás`);
+    return messages;
 }
 
 async function main() {
@@ -211,21 +220,37 @@ async function main() {
     
     for (const [chatId, user] of Object.entries(users)) {
         if (user.active === false) continue;
+        
+        // Szűrés kategória szerint
         let toSend = palyazatok;
         if (user.category && user.category !== 'mind') {
             const filtered = palyazatok.filter(p => kategoriaBesorol(p.title, p.source) === user.category);
             if (filtered.length > 0) toSend = filtered;
         }
+
+        // Csoportosítás
+        const groups = {
+            maganszem: [], vallalkozo: [], civil: [],
+            mezogazd: [], intezm: [], egyeb: []
+        };
+        toSend.forEach(p => groups[kategoriaBesorol(p.title, p.source)].push(p));
+
+        // Üzenetek felosztva
+        const messages = splitMessages(groups, today, toSend.length);
+        
         try {
-            await sendMessage(parseInt(chatId), buildMessage(toSend, today));
+            for (const msg of messages) {
+                await sendMessage(parseInt(chatId), msg);
+                await new Promise(r => setTimeout(r, 300));
+            }
             sent++;
-            console.log(`✅ Elküldve: ${chatId}`);
-            await new Promise(r => setTimeout(r, 500));
+            console.log(`✅ Elküldve: ${chatId} (${messages.length} üzenet)`);
+            await new Promise(r => setTimeout(r, 1000));
         } catch (e) {
             console.log(`❌ Hiba ${chatId}: ${e.message}`);
         }
     }
-    console.log(`✅ Kész! ${sent} értesítő elküldve.`);
+    console.log(`✅ Kész! ${sent} felhasználónak elküldve.`);
 }
 
 main().catch(console.error);
