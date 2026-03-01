@@ -65,22 +65,41 @@ async function scrapePalyazatok() {
     console.log('📡 RSS feedek lekérése...');
     
     const sources = [
-        // palyazatok.org - fő kategóriák
+        // === HIVATALOS ===
+        { url: 'https://palyazat.gov.hu/rss.xml', name: 'Palyazat.gov.hu' },
+        { url: 'https://rss.nkfih.gov.hu/hirek?rss=1', name: 'NKFIH Hírek' },
+        { url: 'https://rss.nkfih.gov.hu/hirek-180603?rss=1', name: 'NKFIH Pályázati hírek' },
+        { url: 'https://rss.nkfih.gov.hu/nemzeti-laboratoriumok-rss?rss=1', name: 'Nemzeti Laboratóriumok' },
+        { url: 'https://nkfih.gov.hu/magyar/rss/hirek?rss=1', name: 'NIH Hírek' },
+        { url: 'https://nkfih.gov.hu/magyar/rss/hazai-innovacios-hirek?rss=1', name: 'NIH Hazai innováció' },
+        { url: 'https://nkfih.gov.hu/magyar/rss/nemzetkozi-innovacios?rss=1', name: 'NIH Nemzetközi innováció' },
+        
+        // === PÁLYÁZATFIGYELŐ OLDALAK ===
         { url: 'https://www.palyazatok.org/feed/', name: 'Pályázatok.org' },
         { url: 'https://www.palyazatok.org/palyazatok-vallalkozasoknak/feed/', name: 'Vállalkozói pályázatok' },
         { url: 'https://www.palyazatok.org/palyazatok-maganszemelyek-szamara/feed/', name: 'Magánszemély pályázatok' },
         { url: 'https://www.palyazatok.org/palyazatok-civil-szervezeteknek/feed/', name: 'Civil pályázatok' },
         { url: 'https://www.palyazatok.org/palyazatok-onkormanyzatoknak/feed/', name: 'Önkormányzati pályázatok' },
         { url: 'https://www.palyazatok.org/palyazatok-intezmenyeknek/feed/', name: 'Intézményi pályázatok' },
-        // pafi.hu
         { url: 'https://pafi.hu/feed/', name: 'PAFI Pályázatfigyelő' },
         { url: 'https://pafi.hu/palyazatok/vallalkozasok/feed/', name: 'PAFI Vállalkozások' },
         { url: 'https://pafi.hu/palyazatok/maganszemely/feed/', name: 'PAFI Magánszemélyek' },
         { url: 'https://pafi.hu/palyazatok/civil/feed/', name: 'PAFI Civil' },
-        // egyéb
-        { url: 'https://magyarfaluprogram.hu/feed/', name: 'Magyar Falu Program' },
         { url: 'https://www.palyazatihirek.eu/feed/', name: 'Pályázati Hírek' },
+        { url: 'https://magyarfaluprogram.hu/feed/', name: 'Magyar Falu Program' },
         { url: 'https://bgazrt.hu/feed/', name: 'Bethlen Gábor Alapkezelő' },
+        
+        // === WEBNODE PÁLYÁZATFIGYELŐK ===
+        { url: 'https://palyazatfigyelo.webnode.hu/rss/all.xml', name: 'Pályázat Figyelő' },
+        { url: 'https://palyazatfigyelo.webnode.hu/rss/ujdonsagok.xml', name: 'Pályázat Figyelő – Újdonságok' },
+        { url: 'https://mercatorconsulting.webnode.hu/rss/all.xml', name: 'Mercator Consulting' },
+        { url: 'https://mercatorconsulting.webnode.hu/rss/energetikai-palyazatok.xml', name: 'Energetikai pályázatok' },
+        { url: 'https://irodalmipalyazat.webnode.hu/rss/all.xml', name: 'Irodalmi pályázatok' },
+        
+        // === MNL ===
+        { url: 'https://mnl.gov.hu/mnl/1/rss.xml', name: 'MNL' },
+        { url: 'https://mnl.gov.hu/mnl/2/rss.xml', name: 'MNL 2' },
+        { url: 'https://mnl.gov.hu/mnl/15/rss.xml', name: 'MNL 15' },
     ];
 
     const allItems = [];
@@ -89,7 +108,6 @@ async function scrapePalyazatok() {
         items.forEach(item => allItems.push(item));
     }
     
-    // Duplikátumok szűrése cím alapján
     const unique = allItems.filter((p, i, self) => 
         i === self.findIndex(t => t.title === p.title)
     );
@@ -102,18 +120,18 @@ function kategoriaBesorol(title, source) {
     const t = title.toLowerCase();
     const s = (source || '').toLowerCase();
     
-    // Forrás alapú besorolás
     if (s.includes('magánszemély') || s.includes('maganszemely')) return 'maganszem';
     if (s.includes('vállalkozói') || s.includes('vallalkozasoknak') || s.includes('vállalkozások')) return 'vallalkozo';
     if (s.includes('civil')) return 'civil';
     if (s.includes('önkormányzat') || s.includes('intézményi')) return 'intezm';
+    if (s.includes('energetikai')) return 'vallalkozo';
+    if (s.includes('irodalmi')) return 'civil';
     
-    // Kulcsszó alapú besorolás
-    const vallalkozo = ['vállalkozás', 'vállalkozó', 'kkv', 'startup', 'cég', 'üzlet', 'mikro', 'kisvállalkozás', 'munkaadó', 'gazdasági fejleszt'];
-    const maganszem = ['magánszemély', 'család', 'lakás', 'otthon', 'felújítás', 'gyermek', 'nyugdíjas', 'álláskeresők', 'fiatal', 'szülő', 'ösztöndíj', 'diák', 'tanuló', 'utazási támogatás'];
-    const civil = ['civil', 'nonprofit', 'alapítvány', 'egyesület', 'kulturális', 'közösség', 'szervezet', 'egyházi', 'norvég'];
-    const mezogazd = ['mezőgazdaság', 'agrárium', 'farmer', 'vidék', 'erdő', 'gazdák', 'termelők', 'állattenyésztés', 'növénytermesztés', 'kap ', 'agrár'];
-    const intezm = ['önkormányzat', 'intézmény', 'iskola', 'kórház', 'óvoda', 'köznevelés', 'közintézmény'];
+    const vallalkozo = ['vállalkozás', 'vállalkozó', 'kkv', 'startup', 'cég', 'üzlet', 'mikro', 'munkaadó', 'gazdasági', 'innováci', 'laborat'];
+    const maganszem = ['magánszemély', 'család', 'lakás', 'otthon', 'felújítás', 'gyermek', 'nyugdíjas', 'álláskeresők', 'fiatal', 'szülő', 'ösztöndíj', 'diák', 'tanuló'];
+    const civil = ['civil', 'nonprofit', 'alapítvány', 'egyesület', 'kulturális', 'közösség', 'szervezet', 'egyházi', 'irodalmi', 'művészeti', 'sport'];
+    const mezogazd = ['mezőgazdaság', 'agrárium', 'farmer', 'vidék', 'erdő', 'gazdák', 'termelők', 'állattenyésztés', 'növénytermesztés', 'agrár', 'falu'];
+    const intezm = ['önkormányzat', 'intézmény', 'iskola', 'kórház', 'óvoda', 'köznevelés', 'közintézmény', 'levéltár'];
 
     if (vallalkozo.some(k => t.includes(k))) return 'vallalkozo';
     if (maganszem.some(k => t.includes(k))) return 'maganszem';
@@ -129,8 +147,8 @@ function buildMessage(palyazatok, today) {
         vallalkozo: { emoji: '🏢', label: 'VÁLLALKOZÓKNAK', items: [] },
         civil: { emoji: '🤝', label: 'CIVIL SZERVEZETEKNEK', items: [] },
         mezogazd: { emoji: '🌾', label: 'MEZŐGAZDASÁGNAK', items: [] },
-        intezm: { emoji: '🏫', label: 'INTÉZMÉNYEKNEK / ÖNKORMÁNYZATOKNAK', items: [] },
-        egyeb: { emoji: '📋', label: 'EGYÉB PÁLYÁZATOK', items: [] },
+        intezm: { emoji: '🏫', label: 'INTÉZMÉNYEKNEK', items: [] },
+        egyeb: { emoji: '📋', label: 'EGYÉB', items: [] },
     };
 
     palyazatok.forEach(p => {
