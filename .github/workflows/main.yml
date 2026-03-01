@@ -1,0 +1,27 @@
+name: Napi Pályázat Értesítő
+
+on:
+  schedule:
+    - cron: '0 13 * * *'  # minden nap 13:00 UTC = 14:00 magyar idő
+  workflow_dispatch:  # kézi indítás is lehetséges
+
+jobs:
+  send-notifications:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Kód letöltése
+        uses: actions/checkout@v3
+
+      - name: Node.js beállítása
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Függőségek telepítése
+        run: npm install
+
+      - name: Napi értesítők küldése
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        run: node send-daily.js
