@@ -44,7 +44,8 @@ async function fetchRSS(url, sourceName) {
             const titleMatch = itemXml.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>([^<]+)<\/title>/);
             const linkMatch = itemXml.match(/<link>([^<]+)<\/link>|<guid isPermaLink="true">([^<]+)<\/guid>/);
             
-            const title = (titleMatch?.[1] || titleMatch?.[2] || '').trim().replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+            const title = (titleMatch?.[1] || titleMatch?.[2] || '').trim()
+                .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#8211;/g, '–');
             const link = (linkMatch?.[1] || linkMatch?.[2] || '').trim();
             
             if (title && title.length > 5) {
@@ -64,13 +65,22 @@ async function scrapePalyazatok() {
     console.log('📡 RSS feedek lekérése...');
     
     const sources = [
+        // palyazatok.org - fő kategóriák
         { url: 'https://www.palyazatok.org/feed/', name: 'Pályázatok.org' },
         { url: 'https://www.palyazatok.org/palyazatok-vallalkozasoknak/feed/', name: 'Vállalkozói pályázatok' },
         { url: 'https://www.palyazatok.org/palyazatok-maganszemelyek-szamara/feed/', name: 'Magánszemély pályázatok' },
         { url: 'https://www.palyazatok.org/palyazatok-civil-szervezeteknek/feed/', name: 'Civil pályázatok' },
-        { url: 'https://www.palyazatihirek.eu/feed/', name: 'Pályázati Hírek' },
-        { url: 'https://magyarfaluprogram.hu/feed/', name: 'Magyar Falu Program' },
         { url: 'https://www.palyazatok.org/palyazatok-onkormanyzatoknak/feed/', name: 'Önkormányzati pályázatok' },
+        { url: 'https://www.palyazatok.org/palyazatok-intezmenyeknek/feed/', name: 'Intézményi pályázatok' },
+        // pafi.hu
+        { url: 'https://pafi.hu/feed/', name: 'PAFI Pályázatfigyelő' },
+        { url: 'https://pafi.hu/palyazatok/vallalkozasok/feed/', name: 'PAFI Vállalkozások' },
+        { url: 'https://pafi.hu/palyazatok/maganszemely/feed/', name: 'PAFI Magánszemélyek' },
+        { url: 'https://pafi.hu/palyazatok/civil/feed/', name: 'PAFI Civil' },
+        // egyéb
+        { url: 'https://magyarfaluprogram.hu/feed/', name: 'Magyar Falu Program' },
+        { url: 'https://www.palyazatihirek.eu/feed/', name: 'Pályázati Hírek' },
+        { url: 'https://bgazrt.hu/feed/', name: 'Bethlen Gábor Alapkezelő' },
     ];
 
     const allItems = [];
@@ -79,60 +89,68 @@ async function scrapePalyazatok() {
         items.forEach(item => allItems.push(item));
     }
     
-    // Duplikátumok szűrése
-    return allItems.filter((p, i, self) => 
+    // Duplikátumok szűrése cím alapján
+    const unique = allItems.filter((p, i, self) => 
         i === self.findIndex(t => t.title === p.title)
     );
+    
+    console.log(`📋 Összesen: ${unique.length} egyedi pályázat`);
+    return unique;
 }
 
-// Kategorizálás kulcsszavak alapján
-function kategoriaBesorol(title) {
+function kategoriaBesorol(title, source) {
     const t = title.toLowerCase();
+    const s = (source || '').toLowerCase();
     
-    const vallalkozo = ['vállalkozás', 'vállalkozó', 'kkv', 'startup', 'cég', 'üzlet', 'mikro', 'kisvállalkozás', 'munkaadó', 'gazdasági'];
-    const maganszem = ['magánszemély', 'család', 'lakás', 'otthon', 'felújítás', 'gyermek', 'nyugdíjas', 'álláskeresők', 'fiatal', 'szülő', 'ösztöndíj', 'diák', 'tanuló'];
-    const civil = ['civil', 'nonprofit', 'alapítvány', 'egyesület', 'kulturális', 'közösség', 'szervezet', 'egyházi'];
-    const mezogazd = ['mezőgazdaság', 'agrárium', 'farmer', 'vidék', 'erdő', 'gazdák', 'termelők', 'állattenyésztés', 'növénytermesztés'];
+    // Forrás alapú besorolás
+    if (s.includes('magánszemély') || s.includes('maganszemely')) return 'maganszem';
+    if (s.includes('vállalkozói') || s.includes('vallalkozasoknak') || s.includes('vállalkozások')) return 'vallalkozo';
+    if (s.includes('civil')) return 'civil';
+    if (s.includes('önkormányzat') || s.includes('intézményi')) return 'intezm';
+    
+    // Kulcsszó alapú besorolás
+    const vallalkozo = ['vállalkozás', 'vállalkozó', 'kkv', 'startup', 'cég', 'üzlet', 'mikro', 'kisvállalkozás', 'munkaadó', 'gazdasági fejleszt'];
+    const maganszem = ['magánszemély', 'család', 'lakás', 'otthon', 'felújítás', 'gyermek', 'nyugdíjas', 'álláskeresők', 'fiatal', 'szülő', 'ösztöndíj', 'diák', 'tanuló', 'utazási támogatás'];
+    const civil = ['civil', 'nonprofit', 'alapítvány', 'egyesület', 'kulturális', 'közösség', 'szervezet', 'egyházi', 'norvég'];
+    const mezogazd = ['mezőgazdaság', 'agrárium', 'farmer', 'vidék', 'erdő', 'gazdák', 'termelők', 'állattenyésztés', 'növénytermesztés', 'kap ', 'agrár'];
+    const intezm = ['önkormányzat', 'intézmény', 'iskola', 'kórház', 'óvoda', 'köznevelés', 'közintézmény'];
 
     if (vallalkozo.some(k => t.includes(k))) return 'vallalkozo';
     if (maganszem.some(k => t.includes(k))) return 'maganszem';
     if (civil.some(k => t.includes(k))) return 'civil';
     if (mezogazd.some(k => t.includes(k))) return 'mezogazd';
-    return 'egyeb'; // besorolatlan
+    if (intezm.some(k => t.includes(k))) return 'intezm';
+    return 'egyeb';
 }
 
-// Üzenet összeállítása kategóriánként csoportosítva
 function buildMessage(palyazatok, today) {
-    // Csoportosítás
     const groups = {
         maganszem: { emoji: '👤', label: 'MAGÁNSZEMÉLYEKNEK', items: [] },
         vallalkozo: { emoji: '🏢', label: 'VÁLLALKOZÓKNAK', items: [] },
         civil: { emoji: '🤝', label: 'CIVIL SZERVEZETEKNEK', items: [] },
         mezogazd: { emoji: '🌾', label: 'MEZŐGAZDASÁGNAK', items: [] },
+        intezm: { emoji: '🏫', label: 'INTÉZMÉNYEKNEK / ÖNKORMÁNYZATOKNAK', items: [] },
         egyeb: { emoji: '📋', label: 'EGYÉB PÁLYÁZATOK', items: [] },
     };
 
     palyazatok.forEach(p => {
-        const kat = kategoriaBesorol(p.title);
+        const kat = kategoriaBesorol(p.title, p.source);
         groups[kat].items.push(p);
     });
 
     let msg = `🗓️ *Mai pályázatok – ${today}*\n`;
     msg += `📊 Összesen ${palyazatok.length} pályázat\n\n`;
 
-    for (const [key, group] of Object.entries(groups)) {
+    for (const group of Object.values(groups)) {
         if (group.items.length === 0) continue;
-        
         msg += `${group.emoji} *${group.label}:*\n`;
-        
         group.items.slice(0, 4).forEach((p, i) => {
-            msg += `${i + 1}. [${p.title}](${p.link})\n`;
+            const link = p.link ? `[${p.title}](${p.link})` : p.title;
+            msg += `${i + 1}. ${link}\n`;
         });
-        
         if (group.items.length > 4) {
             msg += `_...+${group.items.length - 4} további_\n`;
         }
-        
         msg += `\n`;
     }
 
@@ -153,7 +171,6 @@ async function main() {
     }
     
     const palyazatok = await scrapePalyazatok();
-    console.log(`📋 ${palyazatok.length} pályázat találva`);
     
     if (palyazatok.length === 0) {
         for (const [chatId, user] of Object.entries(users)) {
@@ -171,13 +188,10 @@ async function main() {
     for (const [chatId, user] of Object.entries(users)) {
         if (user.active === false) continue;
         
-        // Ha a felhasználónak van kategóriája, csak azt szűrjük
-        // Ha "mind", akkor az összes kategóriát csoportosítva küldjük
         let toSend = palyazatok;
-        
         if (user.category && user.category !== 'mind') {
-            toSend = palyazatok.filter(p => kategoriaBesorol(p.title) === user.category);
-            if (toSend.length === 0) toSend = palyazatok; // ha nincs találat, mindent küld
+            const filtered = palyazatok.filter(p => kategoriaBesorol(p.title, p.source) === user.category);
+            if (filtered.length > 0) toSend = filtered;
         }
         
         const msg = buildMessage(toSend, today);
